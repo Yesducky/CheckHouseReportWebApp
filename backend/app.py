@@ -76,8 +76,8 @@ def add_problem(event_id):
             'success': True,
             'problem_id': problem_id,
             'event': event.to_dict()
-        }), 201
-        
+        }, 201)
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -109,6 +109,7 @@ def update_event_by_url(url):
     try:
         event = Event.query.filter_by(url=url).first_or_404()
         data = request.json
+        house = None
         if 'house_id' in data:
             # Validate house_id exists
             if house:
@@ -137,14 +138,14 @@ def update_event_by_url(url):
         db.session.commit()
         # Return updated event with house info
         event_dict = event.to_dict()
+        house = None
         if event.house_id:
-            house = House.query.get(event.house_id)
-            event_dict['house'] = house.to_dict() if house else None
-        else:
-            event_dict['house'] = None
+            house = db.session.get(House, event.house_id)
+        event_dict['house'] = house.to_dict() if house else None
         return jsonify({'success': True, 'event': event_dict})
     except Exception as e:
         db.session.rollback()
+        print(f"Error updating event by URL: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/events/url/<url>/problems', methods=['POST'])

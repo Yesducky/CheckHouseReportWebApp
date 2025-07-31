@@ -3,12 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { eventAPI } from '../utils/api';
 import { useParams } from 'react-router-dom';
 import AddProblem from '../components/AddProblem';
+import EmailCopy from "../components/EmailCopy.jsx";
 
 export default function EventDashboard() {
   const { eventId } = useParams();
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAddProblem, setShowAddProblem] = useState(false);
+  const [showEmailCopy, setShowEmailCopy] = useState(false);
 
   useEffect(() => {
     fetchEvent();
@@ -54,6 +56,10 @@ export default function EventDashboard() {
     }
   };
 
+  const handleOpenCopy = () => {
+    setShowEmailCopy(true)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -78,12 +84,20 @@ export default function EventDashboard() {
         <div className="bg-white shadow-lg rounded-lg w-full">
           <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center w-full">
             <h3 className="text-lg font-medium text-gray-900">項目資訊</h3>
+            <div className={`flex space-x-2`}>
+            <button
+                onClick={handleOpenCopy}
+                className="bg-darkred text-white px-4 py-2 rounded shadow hover:bg-red transition-colors"
+            >
+              Email
+            </button>
               <button
                   onClick={handleExportDocx}
                   className="bg-darkred text-white px-4 py-2 rounded shadow hover:bg-red transition-colors"
               >
-                Output Report
+                Report
               </button>
+            </div>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-6">
@@ -227,6 +241,11 @@ export default function EventDashboard() {
               fetchEvent();
             }}
           />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showEmailCopy && (
+            <EmailCopy onClose={() => setShowEmailCopy(false)} flat={event.flat} old_house={event.old_house_id} />
         )}
       </AnimatePresence>
     </div>

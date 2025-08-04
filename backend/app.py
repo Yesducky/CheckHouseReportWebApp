@@ -109,9 +109,9 @@ def update_event_by_url(url):
     try:
         event = Event.query.filter_by(url=url).first_or_404()
         data = request.json
-        house = None
         if 'house_id' in data:
             # Validate house_id exists
+            house = House.query.get(data['house_id'])
             if house:
                 event.house_id = data['house_id']
             else:

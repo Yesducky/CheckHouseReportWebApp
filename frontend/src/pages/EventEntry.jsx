@@ -39,7 +39,7 @@ export default function EventEntry() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-primary sm:px-6 lg:px-8">
+    <div className="h-full flex items-center justify-center bg-primary sm:px-6 lg:px-8">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}

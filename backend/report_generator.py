@@ -152,19 +152,50 @@ class ReportGenerator:
             if images:
                 for img_idx, img_data in enumerate(images):
                     try:
-                        # Handle base64 image data
-                        if isinstance(img_data, str) and ',' in img_data:
-                            image_data = base64.b64decode(img_data.split(',')[1])
-                        else:
+                        # Handle base64 image data more robustly
+                        if isinstance(img_data, str):
+                            # Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
+                            if img_data.startswith('data:'):
+                                # Find the comma that separates the header from the base64 data
+                                comma_index = img_data.find(',')
+                                if comma_index != -1:
+                                    img_data = img_data[comma_index + 1:]
+
+                            # Clean up any whitespace or newlines
+                            img_data = img_data.strip().replace('\n', '').replace('\r', '')
+
+                            # Decode base64
                             image_data = base64.b64decode(img_data)
+                        else:
+                            # If it's not a string, try to decode directly
+                            image_data = base64.b64decode(img_data)
+
+                        # Validate that we have actual image data
+                        if len(image_data) < 100:  # Very small data likely indicates an error
+                            raise ValueError("Image data too small")
+
                         image_stream = BytesIO(image_data)
-                        self.document.add_picture(image_stream, width=Inches(4))
+                        # Reset stream position to beginning
+                        image_stream.seek(0)
+
+                        try:
+                            # Set image width to half of paper width (assuming standard A4: 8.27 inches width)
+                            # Paper width minus margins is approximately 6.5 inches, so half would be 3.25 inches
+                            self.document.add_picture(image_stream, width=Inches(3.25))
+                        except Exception as pic_error:
+                            print(f"Picture error: {str(pic_error)}")
+                            raise pic_error
                         # Add caption (optional, can be removed if not needed)
                         # caption = self.document.add_paragraph()
                         # caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         # caption.add_run(f'圖片 {img_idx + 1}')
                     except Exception as e:
-                        self.document.add_paragraph(f'圖片 {img_idx + 1} (無法載入)')
+                        print(f"Error processing image {img_idx + 1}: {str(e)}")
+                        # Add a more descriptive error message in the document
+                        error_para = self.document.add_paragraph(f'圖片 {img_idx + 1} (無法載入: {str(e)})')
+                        for run in error_para.runs:
+                            run.font.name = zh_font_name
+                            run._element.rPr.rFonts.set(qn('w:eastAsia'), zh_font_name)
         self.document.add_paragraph()
     
 

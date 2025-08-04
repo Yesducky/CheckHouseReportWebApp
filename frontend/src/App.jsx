@@ -5,12 +5,11 @@ import EventSetup from './pages/EventSetup';
 import EventDashboard from './pages/EventDashboard';
 
 function AppContent() {
-  const location = useLocation();
 
   return (
-    <div className="bg-primary flex flex-col min-h-screen">
+    <div className="flex flex-col h-screen">
       <Header />
-      <div className="flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex-1 w-full h-fit min-h-full mx-auto px-4 sm:px-6 lg:px-8 py-8 bg-primary">
         <Routes>
           <Route path="/" element={<EventEntry />} />
           <Route path="/setup/:eventId" element={<EventSetup />} />

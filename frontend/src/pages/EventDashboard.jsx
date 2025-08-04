@@ -4,6 +4,7 @@ import { eventAPI } from '../utils/api';
 import { useParams } from 'react-router-dom';
 import AddProblem from '../components/AddProblem';
 import EmailCopy from "../components/EmailCopy.jsx";
+import React from 'react';
 
 export default function EventDashboard() {
   const { eventId } = useParams();
@@ -11,6 +12,9 @@ export default function EventDashboard() {
   const [loading, setLoading] = useState(true);
   const [showAddProblem, setShowAddProblem] = useState(false);
   const [showEmailCopy, setShowEmailCopy] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerImg, setViewerImg] = useState(null);
+  const [viewerImgName, setViewerImgName] = useState('');
 
   useEffect(() => {
     fetchEvent();
@@ -60,9 +64,72 @@ export default function EventDashboard() {
     setShowEmailCopy(true)
   }
 
+  const downloadAllImages = async (problem) => {
+    if (!problem.image || problem.image.length === 0) {
+      alert('此問題沒有圖片可下載');
+      return;
+    }
+
+    try {
+      for (let i = 0; i < problem.image.length; i++) {
+        const imageUrl = problem.image[i];
+
+        // Create a temporary link element
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = `${eventId}_圖片_${i + 1}.jpg`;
+        link.target = '_blank';
+
+        // Append to body, click, and remove
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Add a small delay between downloads to avoid browser blocking
+        if (i < problem.image.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+    } catch (error) {
+      console.error('下載圖片時發生錯誤:', error);
+      alert('下載圖片失敗，請稍後再試');
+    }
+  };
+
+  // Image viewer handlers
+  const openImageViewer = (img, name) => {
+    setViewerImg(img);
+    setViewerImgName(name);
+    setViewerOpen(true);
+  };
+  const closeImageViewer = () => {
+    setViewerOpen(false);
+    setViewerImg(null);
+    setViewerImgName('');
+  };
+  React.useEffect(() => {
+    if (!viewerOpen) return;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') closeImageViewer();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [viewerOpen]);
+
+  const downloadCurrentImage = () => {
+    if (!viewerImg) return;
+    const link = document.createElement('a');
+    link.href = viewerImg;
+    link.download = viewerImgName || '圖片.jpg';
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex w-full h-full items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-darkred"></div>
       </div>
     );
@@ -70,7 +137,7 @@ export default function EventDashboard() {
 
   if (!event) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center w-full py-12">
         <h2 className="text-xl font-bold text-red-600">
           Event not found
         </h2>
@@ -79,7 +146,7 @@ export default function EventDashboard() {
   }
 
   return (
-    <div className={`w-full `}>
+    <div className={`w-full pb-20 `}>
       <div className="mb-8 h-full w-full ">
         <div className="bg-white shadow-lg rounded-lg w-full">
           <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center w-full">
@@ -87,13 +154,13 @@ export default function EventDashboard() {
             <div className={`flex space-x-2`}>
             <button
                 onClick={handleOpenCopy}
-                className="bg-darkred text-white px-4 py-2 rounded shadow hover:bg-red transition-colors"
+                className="bg-darkred text-white px-4 py-2 cursor-pointer rounded shadow hover:bg-red transition-colors"
             >
               Email
             </button>
               <button
                   onClick={handleExportDocx}
-                  className="bg-darkred text-white px-4 py-2 rounded shadow hover:bg-red transition-colors"
+                  className="bg-darkred text-white px-4 py-2 cursor-pointer rounded shadow hover:bg-red transition-colors"
               >
                 Report
               </button>
@@ -172,11 +239,10 @@ export default function EventDashboard() {
                     <div className="flex justify-between items-center">
                       <h3 className="text-lg font-semibold text-gray-900">{problem.description}</h3>
                       {problem.important && (
-                        <span className="bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded-full flex items-center space-x-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <span className="bg-red-100 text-red-800 text-xs font-medium p-2 rounded-full flex items-center space-x-1">
+                          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
                           </svg>
-                          <span>重要</span>
                         </span>
                       )}
                     </div>
@@ -188,26 +254,43 @@ export default function EventDashboard() {
                     {problem.image.length > 0 && (
                       <div>
                         <div className="grid grid-cols-2 gap-2">
-                          {problem.image.slice(0, 4).map((img, imgIndex) => (
+                          {problem.image.map((img, imgIndex) => (
                             <img
                               key={imgIndex}
                               src={img}
                               alt={`圖片 ${imgIndex + 1}`}
-                              className="w-full object-cover rounded-md border border-gray-200"
+                              className="w-full object-cover rounded-md border border-gray-200 cursor-pointer"
+                              onClick={() => openImageViewer(img, `問題_${problem.id}_圖片_${imgIndex + 1}.jpg`)}
                             />
                           ))}
                         </div>
                       </div>
                     )}
-                    <div className="text-xs text-gray-500 mt-2">
-                      時間: {problem.created_at ?
-                        (() => {
-                          const date = new Date(problem.created_at);
-                          // Add 8 hours for HK time if not already in HK
-                          date.setHours(date.getHours() + 8);
-                          return date.toLocaleString('zh-HK', { hour12: false });
-                        })()
-                        : '無'}
+                    <div className={`flex justify-between`}>
+                      {problem.image && problem.image.length > 0 && (
+                          <button
+                              onClick={() => downloadAllImages(problem)}
+                              className="mt-2 inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-darkred transition-colors"
+                              title="下載所有圖片"
+                          >
+                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            下載所有圖片
+                          </button>
+                      )}
+
+                      <div className="text-xs text-gray-500 mt-4">
+                        {problem.created_at ?
+                          (() => {
+                            const date = new Date(problem.created_at);
+                            // Add 8 hours for HK time if not already in HK
+                            date.setHours(date.getHours() + 8);
+                            return date.toLocaleString('zh-HK', { hour12: false });
+                          })()
+                          : '無'}
+                      </div>
+
                     </div>
                   </div>
                 </motion.div>
@@ -223,7 +306,7 @@ export default function EventDashboard() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.5 }}
         onClick={() => setShowAddProblem(true)}
-        className="fixed bottom-8 right-8 z-50 bg-darkred text-white w-14 h-14 rounded-full shadow-lg hover:bg-red transition-all duration-300 hover:shadow-xl flex items-center justify-center active:scale-95"
+        className="fixed bottom-8 cursor-pointer right-8 z-50 bg-darkred text-white w-14 h-14 rounded-full shadow-lg hover:bg-red transition-all duration-300 hover:shadow-xl flex items-center justify-center active:scale-95"
         aria-label="新增問題"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,6 +331,38 @@ export default function EventDashboard() {
             <EmailCopy onClose={() => setShowEmailCopy(false)} flat={event.flat} old_house={event.old_house_id} />
         )}
       </AnimatePresence>
+
+      {/* Image Viewer Modal */}
+      {viewerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={closeImageViewer}>
+          <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={e => e.stopPropagation()}>
+            <img
+              src={viewerImg}
+              alt="預覽圖片"
+              className="max-h-[80vh] max-w-[90vw] rounded shadow-lg border border-white"
+              style={{objectFit: 'contain'}}
+            />
+            <button
+              onClick={downloadCurrentImage}
+              className="mt-4 px-4 py-2 bg-white text-darkred rounded shadow hover:bg-gray-100 font-medium flex items-center"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              下載圖片
+            </button>
+            <button
+              onClick={closeImageViewer}
+              className="absolute top-2 right-2 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-80"
+              title="關閉"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

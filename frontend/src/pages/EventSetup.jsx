@@ -129,10 +129,10 @@ export default function EventSetup() {
         className="bg-white shadow-lg rounded-lg px-12 py-8 w-full"
       >
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
-          項目設定
+          設定
         </h1>
         <p className="text-gray-600 mb-6">
-          請填寫以下項目詳細資訊
+          請填寫以下驗樓項目詳細資訊
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-6">

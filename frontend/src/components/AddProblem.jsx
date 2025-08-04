@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useParams } from 'react-router-dom';
 import { eventAPI } from '../utils/api';
 import FullScreenCamera from './FullScreenCamera';
+import imageCompression from 'browser-image-compression';
 
 export default function AddProblem({ onClose, onProblemAdded }) {
   const { eventId } = useParams();
@@ -20,20 +21,76 @@ export default function AddProblem({ onClose, onProblemAdded }) {
     setShowCamera(true);
   };
 
-  const handleImageCaptured = (dataUrl) => {
-    setImages(prev => [...prev, dataUrl]);
-    setShowCamera(false);
-  };
-
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files);
-    files.forEach(file => {
+  const handleImageCaptured = async (dataUrl) => {
+    try {
+      // Convert dataUrl to blob, then compress using browser-image-compression
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const file = new File([blob], 'camera-image.jpg', { type: 'image/jpeg' });
+      
+      // Compress using browser-image-compression library
+      const compressedFile = await compressImageWithLibrary(file);
+      
+      // Convert to base64
       const reader = new FileReader();
       reader.onload = (e) => {
         setImages(prev => [...prev, e.target.result]);
       };
-      reader.readAsDataURL(file);
-    });
+      reader.readAsDataURL(compressedFile);
+    } catch (error) {
+      console.error('Error compressing camera image:', error);
+      // Fallback to original dataUrl if compression fails
+      setImages(prev => [...prev, dataUrl]);
+    }
+    setShowCamera(false);
+  };
+
+  // Enhanced compression function using browser-image-compression library
+  const compressImageWithLibrary = async (file) => {
+    const options = {
+      maxSizeMB: 1, // Maximum file size in MB
+      maxWidthOrHeight: 1920, // Maximum width or height
+      useWebWorker: true, // Use web worker for better performance
+      initialQuality: 0.8, // Initial quality (0-1)
+      alwaysKeepResolution: false, // Allow resolution reduction if needed
+      fileType: 'image/jpeg' // Force JPEG format for consistency
+    };
+
+    try {
+      console.log('Original file size:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+      const compressedFile = await imageCompression(file, options);
+      console.log('Compressed file size:', (compressedFile.size / 1024 / 1024).toFixed(2), 'MB');
+      return compressedFile;
+    } catch (error) {
+      console.error('Compression failed:', error);
+      return file; // Return original file if compression fails
+    }
+  };
+
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files);
+
+    for (const file of files) {
+      try {
+        // Compress using the professional library
+        const compressedFile = await compressImageWithLibrary(file);
+        
+        // Convert to base64
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setImages(prev => [...prev, e.target.result]);
+        };
+        reader.readAsDataURL(compressedFile);
+      } catch (error) {
+        console.error('Error processing image:', error);
+        // Fallback to original file
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setImages(prev => [...prev, e.target.result]);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
   };
 
   const removeImage = (index) => {
@@ -135,17 +192,24 @@ export default function AddProblem({ onClose, onProblemAdded }) {
 
             <div>
               <div className="flex space-x-4 mb-4">
+
+                <label htmlFor="fileInputCamera" className="bg-darkred text-white px-4 py-2 rounded-md hover:bg-white hover:text-darkred transition-colors duration-200 flex items-center space-x-2 active:scale-95 cursor-pointer">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </label>
                 <button
                   type="button"
                   onClick={handleImageCapture}
-                  className="bg-darkred text-white px-4 py-2 rounded-md hover:bg-red transition-colors duration-200 flex items-center space-x-2 active:scale-95"
+                  className="border border-darkred text-darkred px-4 py-2 rounded-md hover:bg-darkred hover:text-white transition-colors duration-200 flex items-center space-x-2 active:scale-95"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span>開啟相機</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -154,8 +218,8 @@ export default function AddProblem({ onClose, onProblemAdded }) {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  <span>選擇檔案</span>
                 </button>
+
               </div>
 
               <input
@@ -166,7 +230,14 @@ export default function AddProblem({ onClose, onProblemAdded }) {
                 onChange={handleFileSelect}
                 className="hidden"
               />
-
+              <input
+                type={'file'}
+                accept={'image/*'}
+                id="fileInputCamera"
+                capture={"camera"}
+                onChange={handleFileSelect}
+                className="hidden"
+              />
               {images.length > 0 && (
                 <div className="mt-4">
                   <p className="text-sm text-gray-600 mb-2">已選擇 {images.length} 張圖片</p>

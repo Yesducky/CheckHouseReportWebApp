@@ -9,19 +9,46 @@ const api = axios.create({
   },
 });
 
+// Add response interceptor for better error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('API Error:', error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
+
 export const eventAPI = {
   createEvent: () => api.get('/events'),
-  // getEvent: (eventId) => api.get(`/events/${eventId}`),
   getEvent: (url) => api.get(`/events/url/${url}`),
-  // updateEvent: (eventId, data) => api.put(`/events/${eventId}`, data),
   updateEvent: (url, data) => api.put(`/events/url/${url}`, data),
-  // addProblem: (eventId, problemData) => api.post(`/events/${eventId}/problems`, problemData),
   addProblem: (url, problemData) => api.post(`/events/url/${url}/problems`, problemData),
   generateReport: (url) => api.get(`/events/${url}/report`, {
     responseType: 'blob' // Important for file download
   }),
 
+  // House management
   getHouses: () => api.get('/houses'),
+
+  // Chat API - updated to match Socket.IO backend
+  getChatMessages: (url) => api.get(`/events/url/${url}/chat/messages`),
+  sendChatMessage: (url, messageData) => api.post(`/events/url/${url}/chat/messages`, messageData),
+
+  // Health check endpoint
+  healthCheck: () => api.get('/health'),
+};
+
+// Socket.IO configuration helper
+export const socketConfig = {
+  url: 'http://localhost:5000',
+  options: {
+    transports: ['websocket', 'polling'],
+    timeout: 20000,
+    forceNew: false,
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+  }
 };
 
 export default api;

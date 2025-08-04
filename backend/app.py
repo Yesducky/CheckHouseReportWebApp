@@ -1,19 +1,30 @@
-from flask import Flask, request, jsonify, send_file, Response
-from flask_cors import CORS, cross_origin
-from models import db, Event, Problem, User, House
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit, join_room, leave_room
+from models import db, Event, Problem, User, House, ChatMessage
 from db_utils import init_db
 import base64
 import os
 import secrets
 from datetime import datetime
 from io import BytesIO
+import json
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = secrets.token_hex(16)
+
+# Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lemma_check_house.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Initialize extensions
 db.init_app(app)
-CORS(app, supports_credentials=True, origins="*", allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# CORS configuration
+CORS(app, supports_credentials=True, origins="*",
+     allow_headers=["Content-Type", "Authorization", "Cache-Control"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
 FRONTEND_PORT = os.getenv('FRONTEND_PORT', '5174')
 
@@ -22,6 +33,93 @@ def add_private_network_header(response):
     response.headers["Access-Control-Allow-Private-Network"] = "true"
     return response
 
+# Socket.IO Helper Functions
+def publish_event_update(event_url, event_type="update", data=None):
+    """Publish a Socket.IO event for real-time updates"""
+    try:
+        message = {
+            'type': event_type,
+            'timestamp': datetime.now().isoformat(),
+            'data': data,
+            'event_url': event_url
+        }
+        socketio.emit('event_update', message, room=f'event_{event_url}')
+        print(f"Published event update to room event_{event_url}: {event_type}")
+    except Exception as e:
+        print(f"Error publishing Socket.IO event: {e}")
+
+def publish_chat_message(event_url, message_data):
+    """Publish a chat message via Socket.IO"""
+    try:
+        message_data['event_url'] = event_url
+        socketio.emit('chat_message', message_data, room=f'chat_{event_url}')
+        print(f"Published chat message to room chat_{event_url}")
+    except Exception as e:
+        print(f"Error publishing chat message: {e}")
+
+# Socket.IO Events
+@socketio.on('connect')
+def handle_connect():
+    print(f'Client connected: {request.sid}')
+    emit('connected', {'status': 'Connected to server'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f'Client disconnected: {request.sid}')
+
+@socketio.on('join_event')
+def handle_join_event(data):
+    """Join an event room for real-time updates"""
+    try:
+        event_url = data.get('event_url')
+        if event_url:
+            join_room(f'event_{event_url}')
+            emit('joined_event', {'event_url': event_url, 'status': 'Joined event room'})
+            print(f'Client {request.sid} joined event room: event_{event_url}')
+    except Exception as e:
+        print(f"Error joining event room: {e}")
+        emit('error', {'message': str(e)})
+
+@socketio.on('leave_event')
+def handle_leave_event(data):
+    """Leave an event room"""
+    try:
+        event_url = data.get('event_url')
+        if event_url:
+            leave_room(f'event_{event_url}')
+            emit('left_event', {'event_url': event_url, 'status': 'Left event room'})
+            print(f'Client {request.sid} left event room: event_{event_url}')
+    except Exception as e:
+        print(f"Error leaving event room: {e}")
+        emit('error', {'message': str(e)})
+
+@socketio.on('join_chat')
+def handle_join_chat(data):
+    """Join a chat room for real-time chat messages"""
+    try:
+        event_url = data.get('event_url')
+        if event_url:
+            join_room(f'chat_{event_url}')
+            emit('joined_chat', {'event_url': event_url, 'status': 'Joined chat room'})
+            print(f'Client {request.sid} joined chat room: chat_{event_url}')
+    except Exception as e:
+        print(f"Error joining chat room: {e}")
+        emit('error', {'message': str(e)})
+
+@socketio.on('leave_chat')
+def handle_leave_chat(data):
+    """Leave a chat room"""
+    try:
+        event_url = data.get('event_url')
+        if event_url:
+            leave_room(f'chat_{event_url}')
+            emit('left_chat', {'event_url': event_url, 'status': 'Left chat room'})
+            print(f'Client {request.sid} left chat room: chat_{event_url}')
+    except Exception as e:
+        print(f"Error leaving chat room: {e}")
+        emit('error', {'message': str(e)})
+
+# Event Routes
 @app.route('/api/events', methods=['GET'])
 def create_event():
     """Create a new event and return the URL to access it"""
@@ -54,34 +152,35 @@ def add_problem(event_id):
     """Add a problem to an event's data list"""
     try:
         event = Event.query.get_or_404(event_id)
-        
         data = request.json
         
-        problem_id = len(event.data) + 1
-        
-        new_problem = Problem(
-            id=problem_id,
+        # Create new Problem instance and link to event
+        problem = Problem(
+            event_id=event.id,
             image=data.get('image', []),
             description=data.get('description', ''),
             important=data.get('important', False),
             category=data.get('category', 'general')
         )
         
-        event.data.append(new_problem.to_dict())
-        
+        db.session.add(problem)
         db.session.commit()
-        push_sse_event(str(event_id))
+
+        # Publish Socket.IO update
+        publish_event_update(event.url, "problem_added", {
+            'problem': problem.to_dict(),
+            'event': event.to_dict()
+        })
 
         return jsonify({
             'success': True,
-            'problem_id': problem_id,
+            'problem_id': problem.id,
             'event': event.to_dict()
-        }, 201)
+        }), 201
 
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/events/url/<url>', methods=['GET'])
 def get_event_by_url(url):
@@ -89,19 +188,21 @@ def get_event_by_url(url):
     try:
         event = Event.query.filter_by(url=url).first_or_404()
         event_dict = event.to_dict()
+
         # Ensure problems are included as a list
         event_dict['problems'] = [problem.to_dict() for problem in event.problems]
+
         # Add house info if available
         if event.house_id:
             house = House.query.get(event.house_id)
             event_dict['house'] = house.to_dict() if house else None
         else:
             event_dict['house'] = None
+
         return jsonify({'success': True, 'event': event_dict})
     except Exception as e:
         print(f"Error fetching event by URL: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/events/url/<url>', methods=['PUT'])
 def update_event_by_url(url):
@@ -109,6 +210,7 @@ def update_event_by_url(url):
     try:
         event = Event.query.filter_by(url=url).first_or_404()
         data = request.json
+
         if 'house_id' in data:
             # Validate house_id exists
             house = House.query.get(data['house_id'])
@@ -116,12 +218,14 @@ def update_event_by_url(url):
                 event.house_id = data['house_id']
             else:
                 return jsonify({'success': False, 'error': 'Invalid house_id'}), 400
+
         if 'old_house_id' in data:
             event.old_house_id = data['old_house_id']
         if 'flat' in data:
             event.flat = data['flat']
         if 'customer_name' in data:
             event.customer_name = data['customer_name']
+
         # Update problems if provided
         if 'problems' in data:
             for problem in event.problems:
@@ -135,13 +239,19 @@ def update_event_by_url(url):
                     category=p.get('category', 'general')
                 )
                 db.session.add(problem)
+
         db.session.commit()
+
         # Return updated event with house info
         event_dict = event.to_dict()
         house = None
         if event.house_id:
             house = db.session.get(House, event.house_id)
         event_dict['house'] = house.to_dict() if house else None
+
+        # Publish Socket.IO update
+        publish_event_update(url, "event_updated", event_dict)
+
         return jsonify({'success': True, 'event': event_dict})
     except Exception as e:
         db.session.rollback()
@@ -154,6 +264,7 @@ def add_problem_by_url(url):
     try:
         event = Event.query.filter_by(url=url).first_or_404()
         data = request.json
+
         # Create new Problem instance and link to event
         problem = Problem(
             event_id=event.id,
@@ -162,8 +273,16 @@ def add_problem_by_url(url):
             important=data.get('important', False),
             category=data.get('category', '其它問題')
         )
+
         db.session.add(problem)
         db.session.commit()
+
+        # Publish Socket.IO update
+        publish_event_update(url, "problem_added", {
+            'problem': problem.to_dict(),
+            'event': event.to_dict()
+        })
+
         return jsonify({
             'success': True,
             'problem_id': problem.id,
@@ -212,34 +331,66 @@ def get_all_houses():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Global dict to hold queues for each event
-sse_event_queues = {}
+# Chat Routes
+@app.route('/api/events/url/<url>/chat/messages', methods=['GET'])
+def get_chat_messages(url):
+    """Get all chat messages for an event"""
+    try:
+        event = Event.query.filter_by(url=url).first_or_404()
+        messages = ChatMessage.query.filter_by(event_id=event.id).order_by(ChatMessage.timestamp.asc()).all()
+        return jsonify({
+            'success': True,
+            'messages': [msg.to_dict() for msg in messages]
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-def push_sse_event(event_id):
-    if event_id not in sse_event_queues:
-        return
-    for q in sse_event_queues[event_id]:
-        q.put('update')
+@app.route('/api/events/url/<url>/chat/messages', methods=['POST'])
+def send_chat_message(url):
+    """Send a chat message for an event"""
+    try:
+        event = Event.query.filter_by(url=url).first_or_404()
+        data = request.json
 
-@app.route('/api/events/<event_id>/sse')
-def sse_event(event_id):
-    def event_stream(q):
-        while True:
-            msg = q.get()
-            yield f'data: {msg}\n\n'
-    # Create a queue for this client
-    q = queue.Queue()
-    if event_id not in sse_event_queues:
-        sse_event_queues[event_id] = []
-    sse_event_queues[event_id].append(q)
-    # Remove queue on disconnect
-    def remove_queue():
-        sse_event_queues[event_id].remove(q)
-    threading.Thread(target=lambda: (q.join(), remove_queue()), daemon=True).start()
-    return Response(event_stream(q), mimetype='text/event-stream')
+        # Handle both sender_name/content and user/message field formats
+        user_name = data.get('user', 'Anonymous')
+        message_content = data.get('content') or data.get('message', '')
+
+        message = ChatMessage(
+            event_id=event.id,
+            user=user_name,
+            message=message_content,
+            timestamp=datetime.now()
+        )
+
+        db.session.add(message)
+        db.session.commit()
+
+        # Publish chat message via Socket.IO
+        message_data = message.to_dict()
+        publish_chat_message(url, message_data)
+
+        return jsonify({
+            'success': True,
+            'message': message_data
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error sending chat message: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
-if __name__ == '__main__':
+# Health Check
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({'success': True, 'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+
+# Initialize database when app starts
+def create_tables():
     with app.app_context():
         init_db()
-    app.run(debug=True, port=5000, host='0.0.0.0')
+
+if __name__ == '__main__':
+    create_tables()
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)

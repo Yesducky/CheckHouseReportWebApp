@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom';
 import AddProblem from '../components/AddProblem';
 import EmailCopy from "../components/EmailCopy.jsx";
 import ImageViewer from '../components/ImageViewer';
+import ChatRoom from '../components/ChatRoom';
 
 export default function EventDashboard() {
   const { eventId } = useParams();
@@ -15,6 +16,9 @@ export default function EventDashboard() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerImg, setViewerImg] = useState(null);
   const [viewerImgName, setViewerImgName] = useState('');
+  const [showChat, setShowChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [lastSeen, setLastSeen] = useState(Date.now());
 
   useEffect(() => {
     fetchEvent();
@@ -118,6 +122,24 @@ export default function EventDashboard() {
     link.click();
     document.body.removeChild(link);
   };
+
+  // Setup SSE for chat alert
+  useEffect(() => {
+    if (!event || !event.url) return;
+    const eventSource = new EventSource(`/api/events/url/${event.url}/chat/stream`);
+    eventSource.onmessage = (e) => {
+      if (!showChat) setUnreadCount(c => c + 1);
+    };
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+    return () => eventSource.close();
+  }, [event, showChat]);
+
+  // Reset unread count when chatroom is opened
+  useEffect(() => {
+    if (showChat) setUnreadCount(0);
+  }, [showChat]);
 
   if (loading) {
     return (
@@ -306,6 +328,25 @@ export default function EventDashboard() {
         </svg>
       </motion.button>
 
+      {/* Floating Chat Button */}
+      <motion.button
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.5 }}
+        className="fixed bottom-28 right-8 z-50 bg-green-600 text-white w-14 h-14 rounded-full shadow-lg hover:bg-green-700 transition-all duration-300 flex items-center justify-center active:scale-95"
+        aria-label="聊天室"
+        onClick={() => setShowChat(true)}
+      >
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v8a2 2 0 01-2 2H7a2 2 0 01-2-2V10a2 2 0 012-2h2m6-4v4m0 0l-2-2m2 2l2-2" />
+        </svg>
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-2 py-0.5 animate-bounce">
+            {unreadCount}
+          </span>
+        )}
+      </motion.button>
+
       {/* AddProblem Modal */}
       <AnimatePresence>
         {showAddProblem && (
@@ -332,6 +373,13 @@ export default function EventDashboard() {
         onClose={closeImageViewer}
         onDownload={downloadCurrentImage}
       />
+
+      {/* ChatRoom Modal */}
+      <AnimatePresence>
+        {showChat && (
+          <ChatRoom eventUrl={event?.url} user={'anonymous'} onClose={()=>{setShowChat(false)}} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

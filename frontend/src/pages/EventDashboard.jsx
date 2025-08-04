@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { eventAPI } from '../utils/api';
 import { useParams } from 'react-router-dom';
 import AddProblem from '../components/AddProblem';
 import EmailCopy from "../components/EmailCopy.jsx";
-import React from 'react';
+import ImageViewer from '../components/ImageViewer';
 
 export default function EventDashboard() {
   const { eventId } = useParams();
@@ -107,14 +107,6 @@ export default function EventDashboard() {
     setViewerImg(null);
     setViewerImgName('');
   };
-  React.useEffect(() => {
-    if (!viewerOpen) return;
-    const handleKey = (e) => {
-      if (e.key === 'Escape') closeImageViewer();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [viewerOpen]);
 
   const downloadCurrentImage = () => {
     if (!viewerImg) return;
@@ -260,7 +252,7 @@ export default function EventDashboard() {
                               src={img}
                               alt={`圖片 ${imgIndex + 1}`}
                               className="w-full object-cover rounded-md border border-gray-200 cursor-pointer"
-                              onClick={() => openImageViewer(img, `問題_${problem.id}_圖片_${imgIndex + 1}.jpg`)}
+                              onClick={() => openImageViewer(img, `${eventId}_圖片_${imgIndex + 1}.jpg`)}
                             />
                           ))}
                         </div>
@@ -333,36 +325,13 @@ export default function EventDashboard() {
       </AnimatePresence>
 
       {/* Image Viewer Modal */}
-      {viewerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80" onClick={closeImageViewer}>
-          <div className="relative max-w-full max-h-full flex flex-col items-center" onClick={e => e.stopPropagation()}>
-            <img
-              src={viewerImg}
-              alt="預覽圖片"
-              className="max-h-[80vh] max-w-[90vw] rounded shadow-lg border border-white"
-              style={{objectFit: 'contain'}}
-            />
-            <button
-              onClick={downloadCurrentImage}
-              className="mt-4 px-4 py-2 bg-white text-darkred rounded shadow hover:bg-gray-100 font-medium flex items-center"
-            >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              下載圖片
-            </button>
-            <button
-              onClick={closeImageViewer}
-              className="absolute top-2 right-2 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-80"
-              title="關閉"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
+      <ImageViewer
+        open={viewerOpen}
+        img={viewerImg}
+        imgName={viewerImgName}
+        onClose={closeImageViewer}
+        onDownload={downloadCurrentImage}
+      />
     </div>
   );
 }

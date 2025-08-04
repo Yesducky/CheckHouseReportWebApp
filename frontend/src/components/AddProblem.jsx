@@ -51,7 +51,7 @@ export default function AddProblem({ onClose, onProblemAdded }) {
       maxSizeMB: 1, // Maximum file size in MB
       maxWidthOrHeight: 1920, // Maximum width or height
       useWebWorker: true, // Use web worker for better performance
-      initialQuality: 0.8, // Initial quality (0-1)
+      initialQuality: 0.4, // Initial quality (0-1)
       alwaysKeepResolution: false, // Allow resolution reduction if needed
       fileType: 'image/jpeg' // Force JPEG format for consistency
     };
@@ -122,7 +122,7 @@ export default function AddProblem({ onClose, onProblemAdded }) {
 
   return (
     <motion.div
-      className="fixed inset-0 flex bg-black/20 items-center justify-center z-50 p-4"
+      className="fixed inset-0 flex bg-black/30 backdrop-blur-xs items-center justify-center z-50 p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <motion.div

@@ -54,7 +54,7 @@ export default function AddProblem({ onClose, onProblemAdded }) {
       maxSizeMB: 1, // Maximum file size in MB
       maxWidthOrHeight: 1920, // Maximum width or height
       useWebWorker: true, // Use web worker for better performance
-      initialQuality: 0.4, // Initial quality (0-1)
+      initialQuality: 0.8, // Initial quality (0-1)
       alwaysKeepResolution: false, // Allow resolution reduction if needed
       fileType: 'image/jpeg' // Force JPEG format for consistency
     };
@@ -211,7 +211,7 @@ export default function AddProblem({ onClose, onProblemAdded }) {
             <div>
               <div className="flex space-x-4 mb-4">
 
-                <label htmlFor="fileInputCamera" className="bg-darkred text-white px-4 py-2 rounded-md hover:bg-white hover:text-darkred transition-colors duration-200 flex items-center space-x-2 active:scale-95 cursor-pointer">
+                <label htmlFor="fileInputCamera" className="bg-darkred text-white px-4 py-2 rounded-md transition-colors duration-200 flex items-center space-x-2 active:scale-95 cursor-pointer">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -267,23 +267,25 @@ export default function AddProblem({ onClose, onProblemAdded }) {
                           alt={`圖片 ${index + 1}`}
                           className="w-full h-32 object-cover rounded-lg border border-gray-300"
                         />
-                        <div className="absolute top-2 right-2 flex space-x-1">
+                        <div className="absolute -bottom-1 -right-1 flex space-x-1">
                           <button
                             type="button"
                             onClick={() => openImageEditor(index)}
-                            className="bg-blue-500 text-white rounded-full p-1 opacity-75 group-hover:opacity-100 transition-opacity"
+                            className="bg-blue-500 text-white rounded-tl-lg rounded-br-lg p-1 opacity-90 group-hover:opacity-100 transition-opacity"
                             title="編輯圖片"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="square" strokeLinejoin="square" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
+                        </div>
+                        <div className="absolute -top-2 -right-2 flex space-x-1">
                           <button
                             type="button"
                             onClick={() => removeImage(index)}
-                            className="bg-red-500 text-white rounded-full p-1 opacity-75 group-hover:opacity-100 transition-opacity"
+                            className="bg-red text-white rounded-full p-1 opacity-90 group-hover:opacity-100 transition-opacity"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>

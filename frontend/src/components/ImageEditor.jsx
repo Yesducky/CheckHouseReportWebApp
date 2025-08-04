@@ -8,12 +8,14 @@ export default function ImageEditor({ image, onSave, onClose }) {
   const drawingHistoryRef = useRef([]); // Store drawing operations
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
+  const [eraserMode, setEraserMode] = useState(false);
   const [brushColor, setBrushColor] = useState('#ff0000');
-  const [brushWidth, setBrushWidth] = useState(8);
+  const [brushWidth, setBrushWidth] = useState(6);
+  const [eraserWidth, setEraserWidth] = useState(20);
   const [isMobile, setIsMobile] = useState(false);
   const [scale, setScale] = useState(1);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
-  const [imageOffset, setImageOffset] = useState({ x: 0, y: 0 }); // Image pan offset
+  const [viewOffset, setViewOffset] = useState({ x: 0, y: 0 }); // View position offset
 
   // Touch/pinch handling
   const [lastTouches, setLastTouches] = useState([]);
@@ -36,7 +38,6 @@ export default function ImageEditor({ image, onSave, onClose }) {
 
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    const ctx = canvas.getContext('2d');
 
     // Set canvas size based on container
     const containerRect = container.getBoundingClientRect();
@@ -56,7 +57,7 @@ export default function ImageEditor({ image, onSave, onClose }) {
 
   }, [image, isMobile]);
 
-  // Function to redraw canvas at proper resolution with image offset
+  // Function to redraw canvas at proper resolution
   const redrawCanvas = useCallback(() => {
     if (!canvasRef.current || !originalImageRef.current) return;
 
@@ -64,9 +65,9 @@ export default function ImageEditor({ image, onSave, onClose }) {
     const ctx = canvas.getContext('2d');
     const img = originalImageRef.current;
 
-    // Set canvas resolution based on current scale for crisp rendering
+    // Set canvas resolution for crisp rendering
     const devicePixelRatio = window.devicePixelRatio || 1;
-    const renderScale = Math.max(1, scale * devicePixelRatio);
+    const renderScale = devicePixelRatio;
 
     const displayWidth = canvasSize.width;
     const displayHeight = canvasSize.height;
@@ -79,10 +80,10 @@ export default function ImageEditor({ image, onSave, onClose }) {
     canvas.style.width = displayWidth + 'px';
     canvas.style.height = displayHeight + 'px';
 
-    // Scale the drawing context so everything draws at the higher resolution
+    // Scale the drawing context for high resolution
     ctx.scale(renderScale, renderScale);
 
-    // Calculate image positioning to fit in canvas with offset
+    // Calculate image positioning to fit in canvas
     const scaleX = displayWidth / img.width;
     const scaleY = displayHeight / img.height;
     const fitScale = Math.min(scaleX, scaleY);
@@ -92,164 +93,131 @@ export default function ImageEditor({ image, onSave, onClose }) {
     const baseX = (displayWidth - scaledWidth) / 2;
     const baseY = (displayHeight - scaledHeight) / 2;
 
-    // Apply image offset for panning
-    const x = baseX + imageOffset.x;
-    const y = baseY + imageOffset.y;
-
     // Clear and draw background
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-    // Draw the original image at high resolution with offset
-    ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+    // Draw the original image
+    ctx.drawImage(img, baseX, baseY, scaledWidth, scaledHeight);
 
-    // Redraw all drawing operations with offset
+    // Redraw all drawing operations
     drawingHistoryRef.current.forEach(operation => {
       ctx.strokeStyle = operation.color;
       ctx.lineWidth = operation.width;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.beginPath();
-
       operation.points.forEach((point, index) => {
-        const adjustedX = point.x + imageOffset.x;
-        const adjustedY = point.y + imageOffset.y;
-        if (index === 0) {
-          ctx.moveTo(adjustedX, adjustedY);
-        } else {
-          ctx.lineTo(adjustedX, adjustedY);
-        }
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
       });
       ctx.stroke();
     });
-  }, [scale, canvasSize, imageOffset]);
+  }, [canvasSize]);
 
   // Redraw when scale changes
   useEffect(() => {
     redrawCanvas();
   }, [scale, redrawCanvas]);
 
-  // Enhanced drawing functions with offset consideration
+  // Drawing functions
   const startDrawing = useCallback((e) => {
-    if (!drawingMode || isPinching || isPanning) return;
+    if ((!drawingMode && !eraserMode) || isPinching) return;
 
     setIsDrawing(true);
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
+    // const rect = canvas.getBoundingClientRect();
 
     let x, y;
-    if (e.touches) {
-      if (e.touches.length > 1) return;
-      // Calculate coordinates accounting for canvas scale transform
-      x = (e.touches[0].clientX - rect.left) / scale;
-      y = (e.touches[0].clientY - rect.top) / scale;
+    // if (e.touches) {
+    //   if (e.touches.length > 1) return;
+    //   // Correct coordinate transformation: account for scale first, then view offset
+    //   x = e.touches[0].clientX;
+    //   y = e.touches[0].clientY;
+    //   console.log(x,y);
+    // } else {
+    //   // Correct coordinate transformation: account for scale first, then view offset
+    //   x = (e.clientX - rect.left) / scale - viewOffset.x / scale;
+    //   y = (e.clientY - rect.top) / scale - viewOffset.y / scale;
+    //
+    // }
+
+    if (eraserMode) {
+      // Eraser mode: remove intersecting strokes
+      const eraserRadius = eraserWidth / 2;
+      drawingHistoryRef.current = drawingHistoryRef.current.filter(operation => {
+        return !operation.points.some(point => {
+          const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+          return distance < eraserRadius;
+        });
+      });
+      redrawCanvas();
     } else {
-      // Calculate coordinates accounting for canvas scale transform
-      x = (e.clientX - rect.left) / scale;
-      y = (e.clientY - rect.top) / scale;
-    }
+      // Drawing mode: start new stroke
+      const newOperation = {
+        color: brushColor,
+        width: brushWidth/2,
+        points: [{ x, y }],
+        type: 'stroke'
+      };
 
-    // Start new drawing operation - store in canvas coordinates
-    const newOperation = {
-      color: brushColor,
-      width: brushWidth,
-      points: [{ x, y }]
-    };
-    drawingHistoryRef.current.push(newOperation);
-    
-    // Start immediate drawing for responsiveness
-    const ctx = canvas.getContext('2d');
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.strokeStyle = brushColor;
-    ctx.lineWidth = brushWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-  }, [drawingMode, brushColor, brushWidth, isPinching, isPanning, scale]);
+      drawingHistoryRef.current.push(newOperation);
 
-  const draw = useCallback((e) => {
-    if (!isDrawing || !drawingMode || isPinching || isPanning) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
-
-    let x, y;
-    if (e.touches) {
-      if (e.touches.length > 1) return;
-      e.preventDefault();
-      // Calculate coordinates accounting for canvas scale transform
-      x = (e.touches[0].clientX - rect.left) / scale;
-      y = (e.touches[0].clientY - rect.top) / scale;
-    } else {
-      // Calculate coordinates accounting for canvas scale transform
-      x = (e.clientX - rect.left) / scale;
-      y = (e.clientY - rect.top) / scale;
-    }
-
-    // Add point to current drawing operation
-    const currentOperation = drawingHistoryRef.current[drawingHistoryRef.current.length - 1];
-    if (currentOperation) {
-      currentOperation.points.push({ x, y });
-      
-      // Draw line segment immediately for smooth drawing
-      ctx.lineTo(x, y);
-      ctx.stroke();
+      const ctx = canvas.getContext('2d');
       ctx.beginPath();
       ctx.moveTo(x, y);
+      ctx.strokeStyle = brushColor;
+      ctx.lineWidth = brushWidth/2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
     }
-  }, [isDrawing, drawingMode, isPinching, isPanning, scale]);
+  }, [drawingMode, eraserMode, brushColor, brushWidth, eraserWidth, isPinching, scale, viewOffset, redrawCanvas]);
 
-  // Pan/drag functions
-  const startPanning = useCallback((e) => {
-    if (drawingMode || isPinching || scale <= 1) return; // Only allow panning when zoomed in
+  const draw = useCallback((e) => {
+    if (!isDrawing || (!drawingMode && !eraserMode) || isPinching) return;
 
-    setIsPanning(true);
     const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
 
     let x, y;
     if (e.touches) {
-      if (e.touches.length !== 1) return;
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
+      if (e.touches.length > 1) return;
+      // Correct coordinate transformation: account for scale first, then view offset
+      x = (e.touches[0].clientX - rect.left) / scale;
+      y = (e.touches[0].clientY - rect.top) / scale;
+      // console.log(x,y);
+
     } else {
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
+      // Correct coordinate transformation: account for scale first, then view offset
+      x = (e.clientX - rect.left) / scale;
+      y = (e.clientY - rect.top) / scale;
     }
 
-    setLastPanPoint({ x, y });
-  }, [drawingMode, isPinching, scale]);
-
-  const panImage = useCallback((e) => {
-    if (!isPanning || drawingMode || isPinching) return;
-
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-
-    let x, y;
-    if (e.touches) {
-      if (e.touches.length !== 1) return;
-      e.preventDefault();
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
+    if (eraserMode) {
+      // Continue erasing
+      const eraserRadius = eraserWidth / 2;
+      drawingHistoryRef.current = drawingHistoryRef.current.filter(operation => {
+        return !operation.points.some(point => {
+          const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+          return distance < eraserRadius;
+        });
+      });
+      redrawCanvas();
     } else {
-      x = e.clientX - rect.left;
-      y = e.clientY - rect.top;
+      // Continue drawing
+      const currentOperation = drawingHistoryRef.current[drawingHistoryRef.current.length - 1];
+      if (currentOperation) {
+        currentOperation.points.push({ x, y });
+
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+      }
     }
+  }, [isDrawing, drawingMode, eraserMode, eraserWidth, isPinching, scale, viewOffset, redrawCanvas]);
 
-    const deltaX = x - lastPanPoint.x;
-    const deltaY = y - lastPanPoint.y;
-
-    setImageOffset(prev => ({
-      x: prev.x + deltaX,
-      y: prev.y + deltaY
-    }));
-
-    setLastPanPoint({ x, y });
-  }, [isPanning, drawingMode, isPinching, lastPanPoint]);
-
-  // Helper function definitions first
   const stopDrawing = useCallback(() => {
     setIsDrawing(false);
     // Redraw entire canvas to ensure consistency
@@ -258,10 +226,6 @@ export default function ImageEditor({ image, onSave, onClose }) {
     }
   }, [redrawCanvas]);
 
-  const stopPanning = useCallback(() => {
-    setIsPinching(false);
-  }, []);
-
   const handleTouchEnd = useCallback((e) => {
     if (e.touches.length < 2) {
       setIsPinching(false);
@@ -269,9 +233,8 @@ export default function ImageEditor({ image, onSave, onClose }) {
     }
     if (e.touches.length === 0) {
       stopDrawing();
-      stopPanning();
     }
-  }, [stopDrawing, stopPanning]);
+  }, [stopDrawing]);
 
   // Pinch to zoom functions
   const getDistance = (touches) => {
@@ -280,23 +243,25 @@ export default function ImageEditor({ image, onSave, onClose }) {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  // Enhanced touch handling with pan support
+  // Touch handling
   const handleTouchStart = useCallback((e) => {
     if (e.touches.length === 2) {
       setIsPinching(true);
       setLastTouches([...e.touches]);
     } else if (e.touches.length === 1) {
-      if (drawingMode) {
+      if (drawingMode || eraserMode) {
         startDrawing(e);
-      } else if (scale > 1) {
-        startPanning(e);
+      } else {
+        // Start panning
+        setIsPanning(true);
+        const touch = e.touches[0];
+        setLastPanPoint({ x: touch.clientX, y: touch.clientY });
       }
     }
-  }, [drawingMode, scale, startDrawing, startPanning]);
+  }, [drawingMode, eraserMode, startDrawing]);
 
   const handleTouchMove = useCallback((e) => {
     if (e.touches.length === 2 && isPinching) {
-      e.preventDefault();
       const currentDistance = getDistance(e.touches);
       const lastDistance = getDistance(lastTouches);
 
@@ -307,53 +272,77 @@ export default function ImageEditor({ image, onSave, onClose }) {
       }
       setLastTouches([...e.touches]);
     } else if (e.touches.length === 1) {
-      if (drawingMode && !isPinching && !isPanning) {
+      if ((drawingMode || eraserMode) && !isPinching) {
         draw(e);
-      } else if (isPanning && !drawingMode && !isPinching) {
-        panImage(e);
+      } else if (isPanning) {
+        // Handle panning
+        const touch = e.touches[0];
+        const dx = touch.clientX - lastPanPoint.x;
+        const dy = touch.clientY - lastPanPoint.y;
+        setViewOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+        setLastPanPoint({ x: touch.clientX, y: touch.clientY });
       }
     }
-  }, [isPinching, lastTouches, scale, drawingMode, isPanning, draw, panImage]);
+  }, [isPinching, lastTouches, scale, drawingMode, eraserMode, draw, isPanning, lastPanPoint]);
 
-  // Enhanced mouse handlers with pan support
+  // Mouse handlers
   const handleMouseDown = useCallback((e) => {
-    if (drawingMode) {
+    if (drawingMode || eraserMode) {
       startDrawing(e);
-    } else if (scale > 1) {
-      startPanning(e);
+    } else {
+      // Start panning
+      setIsPanning(true);
+      setLastPanPoint({ x: e.clientX, y: e.clientY });
     }
-  }, [drawingMode, scale, startDrawing, startPanning]);
+  }, [drawingMode, eraserMode, startDrawing]);
 
   const handleMouseMove = useCallback((e) => {
-    if (drawingMode && isDrawing) {
+    if ((drawingMode || eraserMode) && isDrawing) {
       draw(e);
-    } else if (isPanning && !drawingMode) {
-      panImage(e);
+    } else if (isPanning) {
+      // Handle panning
+      const dx = e.clientX - lastPanPoint.x;
+      const dy = e.clientY - lastPanPoint.y;
+      setViewOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      setLastPanPoint({ x: e.clientX, y: e.clientY });
     }
-  }, [drawingMode, isDrawing, isPanning, draw, panImage]);
+  }, [drawingMode, eraserMode, isDrawing, draw, isPanning, lastPanPoint]);
 
   const handleMouseUp = useCallback(() => {
     stopDrawing();
-    stopPanning();
-  }, [stopDrawing, stopPanning]);
+    setIsPanning(false);
+  }, [stopDrawing]);
 
   // Save handler
   const handleSave = () => {
     const canvas = canvasRef.current;
-    const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+    const dataURL = canvas.toDataURL('image/jpeg', 0.8); // Adjust quality as needed
     onSave(dataURL);
   };
 
+  // Tool toggle functions
+  const toggleDrawingMode = () => {
+    setDrawingMode(!drawingMode);
+    setEraserMode(false);
+  };
+
+  const toggleEraserMode = () => {
+    setEraserMode(!eraserMode);
+    setDrawingMode(false);
+  };
+
+  // Undo function
   const handleUndo = () => {
-    // Remove last drawing operation
     if (drawingHistoryRef.current.length > 0) {
       drawingHistoryRef.current.pop();
       redrawCanvas();
-    } else {
-      // If no drawing operations, reset to original image
-      drawingHistoryRef.current = [];
-      redrawCanvas();
     }
+  };
+
+  // Clear all drawings
+  const handleClear = () => {
+    drawingHistoryRef.current = [];
+    redrawCanvas();
   };
 
   const zoomIn = () => {
@@ -364,15 +353,10 @@ export default function ImageEditor({ image, onSave, onClose }) {
     setScale(prev => Math.max(0.5, prev * 0.8));
   };
 
-  // Reset image position when zoom is reset
+  // Reset zoom
   const resetZoom = () => {
     setScale(1);
-    setImageOffset({ x: 0, y: 0 });
-  };
-
-  // Reset image position
-  const resetPosition = () => {
-    setImageOffset({ x: 0, y: 0 });
+    setViewOffset({ x: 0, y: 0 }); // Reset view offset
   };
 
   // Mouse wheel zoom
@@ -390,7 +374,7 @@ export default function ImageEditor({ image, onSave, onClose }) {
 
   return (
     <motion.div
-      className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-75"
+      className="fixed inset-0 flex items-center justify-center w-full h-full"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -405,19 +389,19 @@ export default function ImageEditor({ image, onSave, onClose }) {
         exit={{ scale: 0.9, y: isMobile ? 100 : 0 }}
       >
         {/* Header */}
-        <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center shrink-0">
-          <h3 className={`font-semibold text-gray-900 ${isMobile ? 'text-base' : 'text-lg'}`}>
-            圖片編輯器
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors p-1"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        {/*<div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center shrink-0">*/}
+        {/*  <h3 className={`font-semibold text-gray-900 ${isMobile ? 'text-base' : 'text-lg'}`}>*/}
+        {/*    圖片編輯器*/}
+        {/*  </h3>*/}
+        {/*  <button*/}
+        {/*    onClick={onClose}*/}
+        {/*    className="text-gray-400 hover:text-gray-600 transition-colors p-1"*/}
+        {/*  >*/}
+        {/*    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
+        {/*      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />*/}
+        {/*    </svg>*/}
+        {/*  </button>*/}
+        {/*</div>*/}
 
         {/* Toolbar */}
         <div className={`bg-gray-100 px-4 py-3 border-b shrink-0 ${
@@ -426,7 +410,7 @@ export default function ImageEditor({ image, onSave, onClose }) {
           {/* Drawing Tools */}
           <div className="flex items-center justify-center space-x-2">
             <button
-              onClick={() => setDrawingMode(!drawingMode)}
+              onClick={toggleDrawingMode}
               className={`px-3 py-2 rounded-lg text-sm font-medium ${
                 drawingMode ? 'bg-darkred text-white' : 'bg-white text-gray-700 border'
               }`}
@@ -434,10 +418,24 @@ export default function ImageEditor({ image, onSave, onClose }) {
               ✏️ {drawingMode ? '停止' : '畫筆'}
             </button>
             <button
+              onClick={toggleEraserMode}
+              className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                eraserMode ? 'bg-darkred text-white' : 'bg-white text-gray-700 border'
+              }`}
+            >
+              🧹 {eraserMode ? '停止' : '橡皮擦'}
+            </button>
+            <button
               onClick={handleUndo}
               className="bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 px-3 py-2 text-sm"
             >
               重設
+            </button>
+            <button
+              onClick={handleClear}
+              className="bg-red text-white rounded-lg hover:bg-red-600 px-3 py-2 text-sm"
+            >
+              清除
             </button>
           </div>
 
@@ -464,15 +462,6 @@ export default function ImageEditor({ image, onSave, onClose }) {
             >
               100%
             </button>
-            {scale > 1 && (
-              <button
-                onClick={resetPosition}
-                className="bg-blue-500 text-white border rounded-lg px-2 py-1 text-sm hover:bg-blue-600"
-                title="重設位置"
-              >
-                📍
-              </button>
-            )}
           </div>
 
           {/* Color Picker */}
@@ -494,14 +483,14 @@ export default function ImageEditor({ image, onSave, onClose }) {
 
           {/* Brush Width */}
           <div className={`flex items-center ${isMobile ? 'justify-center' : ''} space-x-2`}>
-            <span className="text-sm text-gray-600">粗細:</span>
+            <span className="text-sm text-gray-600 w-16">粗細:</span>
             <input
               type="range"
               min="2"
-              max={isMobile ? "30" : "20"}
+              max={isMobile ? "10" : "20"}
               value={brushWidth}
               onChange={(e) => setBrushWidth(parseInt(e.target.value))}
-              className="w-20"
+              className="w-full accent-darkred"
             />
             <span className="text-sm text-gray-600 w-6">{brushWidth}</span>
           </div>
@@ -510,20 +499,22 @@ export default function ImageEditor({ image, onSave, onClose }) {
         {/* Canvas Container */}
         <div
           ref={containerRef}
-          className="flex-1 flex justify-center items-center overflow-hidden bg-gray-900 p-4"
+          className="flex-1 flex justify-center items-center overflow-hidden bg-primary p-4"
         >
           <div
-            className="relative"
-            style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}
+            className="relative transition-transform duration-200 ease-out"
+            style={{
+              transform: `scale(${scale}) translate(${viewOffset.x}px, ${viewOffset.y}px)`,
+              transformOrigin: 'center center'
+            }}
           >
             <canvas
               ref={canvasRef}
               className="border border-gray-300 rounded bg-white"
               style={{
                 cursor: drawingMode ? 'crosshair' :
-                       isPinching ? 'grabbing' :
-                       isPanning ? 'grabbing' :
-                       scale > 1 ? 'grab' : 'default',
+                       eraserMode ? 'crosshair' :
+                       'default',
                 touchAction: 'none'
               }}
               onMouseDown={handleMouseDown}
@@ -543,7 +534,7 @@ export default function ImageEditor({ image, onSave, onClose }) {
           <button
             onClick={onClose}
             className={`flex-1 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 ${
-              isMobile ? 'py-3 text-base' : 'px-4 py-2'
+              isMobile ? 'py-2 text-base' : 'px-4 py-2'
             }`}
           >
             取消
@@ -551,7 +542,7 @@ export default function ImageEditor({ image, onSave, onClose }) {
           <button
             onClick={handleSave}
             className={`flex-1 bg-darkred text-white rounded-lg hover:bg-red-700 ${
-              isMobile ? 'py-3 text-base font-medium' : 'px-4 py-2'
+              isMobile ? 'py-2 text-base font-medium' : 'px-4 py-2'
             }`}
           >
             儲存編輯

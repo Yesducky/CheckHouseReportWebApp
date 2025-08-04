@@ -81,3 +81,20 @@ class Event(db.Model):
     
     def __repr__(self):
         return f'<Event {self.id}>'
+
+class ChatMessage(db.Model):
+    __tablename__ = 'chat_messages'
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, db.ForeignKey('events.id'), nullable=False)
+    user = Column(String(80), nullable=False)
+    message = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'event_id': self.event_id,
+            'user': self.user,
+            'message': self.message,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+        }

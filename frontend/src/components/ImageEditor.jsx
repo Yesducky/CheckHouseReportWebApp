@@ -140,46 +140,65 @@ export default function ImageEditor({ image, onSave, onClose }) {
     let x, y;
     if (e.touches) {
       if (e.touches.length > 1) return;
-      x = (e.touches[0].clientX - rect.left) - imageOffset.x;
-      y = (e.touches[0].clientY - rect.top) - imageOffset.y;
+      // Calculate coordinates accounting for canvas scale transform
+      x = (e.touches[0].clientX - rect.left) / scale;
+      y = (e.touches[0].clientY - rect.top) / scale;
     } else {
-      x = (e.clientX - rect.left) - imageOffset.x;
-      y = (e.clientY - rect.top) - imageOffset.y;
+      // Calculate coordinates accounting for canvas scale transform
+      x = (e.clientX - rect.left) / scale;
+      y = (e.clientY - rect.top) / scale;
     }
 
-    // Start new drawing operation
+    // Start new drawing operation - store in canvas coordinates
     const newOperation = {
       color: brushColor,
       width: brushWidth,
       points: [{ x, y }]
     };
     drawingHistoryRef.current.push(newOperation);
-  }, [drawingMode, brushColor, brushWidth, isPinching, isPanning, imageOffset]);
+    
+    // Start immediate drawing for responsiveness
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.strokeStyle = brushColor;
+    ctx.lineWidth = brushWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }, [drawingMode, brushColor, brushWidth, isPinching, isPanning, scale]);
 
   const draw = useCallback((e) => {
     if (!isDrawing || !drawingMode || isPinching || isPanning) return;
 
     const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
     const rect = canvas.getBoundingClientRect();
 
     let x, y;
     if (e.touches) {
       if (e.touches.length > 1) return;
       e.preventDefault();
-      x = (e.touches[0].clientX - rect.left) - imageOffset.x;
-      y = (e.touches[0].clientY - rect.top) - imageOffset.y;
+      // Calculate coordinates accounting for canvas scale transform
+      x = (e.touches[0].clientX - rect.left) / scale;
+      y = (e.touches[0].clientY - rect.top) / scale;
     } else {
-      x = (e.clientX - rect.left) - imageOffset.x;
-      y = (e.clientY - rect.top) - imageOffset.y;
+      // Calculate coordinates accounting for canvas scale transform
+      x = (e.clientX - rect.left) / scale;
+      y = (e.clientY - rect.top) / scale;
     }
 
     // Add point to current drawing operation
     const currentOperation = drawingHistoryRef.current[drawingHistoryRef.current.length - 1];
     if (currentOperation) {
       currentOperation.points.push({ x, y });
-      redrawCanvas(); // Redraw entire canvas
+      
+      // Draw line segment immediately for smooth drawing
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
     }
-  }, [isDrawing, drawingMode, isPinching, isPanning, redrawCanvas, imageOffset]);
+  }, [isDrawing, drawingMode, isPinching, isPanning, scale]);
 
   // Pan/drag functions
   const startPanning = useCallback((e) => {
@@ -233,7 +252,11 @@ export default function ImageEditor({ image, onSave, onClose }) {
   // Helper function definitions first
   const stopDrawing = useCallback(() => {
     setIsDrawing(false);
-  }, []);
+    // Redraw entire canvas to ensure consistency
+    if (drawingHistoryRef.current.length > 0) {
+      redrawCanvas();
+    }
+  }, [redrawCanvas]);
 
   const stopPanning = useCallback(() => {
     setIsPinching(false);
@@ -538,4 +561,3 @@ export default function ImageEditor({ image, onSave, onClose }) {
     </motion.div>
     );
 }
-

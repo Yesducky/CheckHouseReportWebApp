@@ -13,10 +13,13 @@ export default function ImageEditor({ image, onSave, onClose }) {
   const [isMobile, setIsMobile] = useState(false);
   const [scale, setScale] = useState(1);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  const [imageOffset, setImageOffset] = useState({ x: 0, y: 0 }); // Image pan offset
 
   // Touch/pinch handling
   const [lastTouches, setLastTouches] = useState([]);
   const [isPinching, setIsPinching] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     const checkMobile = () => {
@@ -53,7 +56,7 @@ export default function ImageEditor({ image, onSave, onClose }) {
 
   }, [image, isMobile]);
 
-  // Function to redraw canvas at proper resolution
+  // Function to redraw canvas at proper resolution with image offset
   const redrawCanvas = useCallback(() => {
     if (!canvasRef.current || !originalImageRef.current) return;
 
@@ -79,24 +82,28 @@ export default function ImageEditor({ image, onSave, onClose }) {
     // Scale the drawing context so everything draws at the higher resolution
     ctx.scale(renderScale, renderScale);
 
-    // Calculate image positioning to fit in canvas
+    // Calculate image positioning to fit in canvas with offset
     const scaleX = displayWidth / img.width;
     const scaleY = displayHeight / img.height;
     const fitScale = Math.min(scaleX, scaleY);
 
     const scaledWidth = img.width * fitScale;
     const scaledHeight = img.height * fitScale;
-    const x = (displayWidth - scaledWidth) / 2;
-    const y = (displayHeight - scaledHeight) / 2;
+    const baseX = (displayWidth - scaledWidth) / 2;
+    const baseY = (displayHeight - scaledHeight) / 2;
+
+    // Apply image offset for panning
+    const x = baseX + imageOffset.x;
+    const y = baseY + imageOffset.y;
 
     // Clear and draw background
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-    // Draw the original image at high resolution
+    // Draw the original image at high resolution with offset
     ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
 
-    // Redraw all drawing operations
+    // Redraw all drawing operations with offset
     drawingHistoryRef.current.forEach(operation => {
       ctx.strokeStyle = operation.color;
       ctx.lineWidth = operation.width;
@@ -105,24 +112,26 @@ export default function ImageEditor({ image, onSave, onClose }) {
       ctx.beginPath();
 
       operation.points.forEach((point, index) => {
+        const adjustedX = point.x + imageOffset.x;
+        const adjustedY = point.y + imageOffset.y;
         if (index === 0) {
-          ctx.moveTo(point.x, point.y);
+          ctx.moveTo(adjustedX, adjustedY);
         } else {
-          ctx.lineTo(point.x, point.y);
+          ctx.lineTo(adjustedX, adjustedY);
         }
       });
       ctx.stroke();
     });
-  }, [scale, canvasSize]);
+  }, [scale, canvasSize, imageOffset]);
 
   // Redraw when scale changes
   useEffect(() => {
     redrawCanvas();
   }, [scale, redrawCanvas]);
 
-  // Enhanced drawing functions with history tracking
+  // Enhanced drawing functions with offset consideration
   const startDrawing = useCallback((e) => {
-    if (!drawingMode || isPinching) return;
+    if (!drawingMode || isPinching || isPanning) return;
 
     setIsDrawing(true);
     const canvas = canvasRef.current;
@@ -131,11 +140,11 @@ export default function ImageEditor({ image, onSave, onClose }) {
     let x, y;
     if (e.touches) {
       if (e.touches.length > 1) return;
-      x = (e.touches[0].clientX - rect.left);
-      y = (e.touches[0].clientY - rect.top);
+      x = (e.touches[0].clientX - rect.left) - imageOffset.x;
+      y = (e.touches[0].clientY - rect.top) - imageOffset.y;
     } else {
-      x = (e.clientX - rect.left);
-      y = (e.clientY - rect.top);
+      x = (e.clientX - rect.left) - imageOffset.x;
+      y = (e.clientY - rect.top) - imageOffset.y;
     }
 
     // Start new drawing operation
@@ -145,10 +154,10 @@ export default function ImageEditor({ image, onSave, onClose }) {
       points: [{ x, y }]
     };
     drawingHistoryRef.current.push(newOperation);
-  }, [drawingMode, brushColor, brushWidth, isPinching]);
+  }, [drawingMode, brushColor, brushWidth, isPinching, isPanning, imageOffset]);
 
   const draw = useCallback((e) => {
-    if (!isDrawing || !drawingMode || isPinching) return;
+    if (!isDrawing || !drawingMode || isPinching || isPanning) return;
 
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -157,11 +166,11 @@ export default function ImageEditor({ image, onSave, onClose }) {
     if (e.touches) {
       if (e.touches.length > 1) return;
       e.preventDefault();
-      x = (e.touches[0].clientX - rect.left);
-      y = (e.touches[0].clientY - rect.top);
+      x = (e.touches[0].clientX - rect.left) - imageOffset.x;
+      y = (e.touches[0].clientY - rect.top) - imageOffset.y;
     } else {
-      x = (e.clientX - rect.left);
-      y = (e.clientY - rect.top);
+      x = (e.clientX - rect.left) - imageOffset.x;
+      y = (e.clientY - rect.top) - imageOffset.y;
     }
 
     // Add point to current drawing operation
@@ -170,11 +179,76 @@ export default function ImageEditor({ image, onSave, onClose }) {
       currentOperation.points.push({ x, y });
       redrawCanvas(); // Redraw entire canvas
     }
-  }, [isDrawing, drawingMode, isPinching, redrawCanvas]);
+  }, [isDrawing, drawingMode, isPinching, isPanning, redrawCanvas, imageOffset]);
 
+  // Pan/drag functions
+  const startPanning = useCallback((e) => {
+    if (drawingMode || isPinching || scale <= 1) return; // Only allow panning when zoomed in
+
+    setIsPanning(true);
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+
+    let x, y;
+    if (e.touches) {
+      if (e.touches.length !== 1) return;
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+
+    setLastPanPoint({ x, y });
+  }, [drawingMode, isPinching, scale]);
+
+  const panImage = useCallback((e) => {
+    if (!isPanning || drawingMode || isPinching) return;
+
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+
+    let x, y;
+    if (e.touches) {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      x = e.touches[0].clientX - rect.left;
+      y = e.touches[0].clientY - rect.top;
+    } else {
+      x = e.clientX - rect.left;
+      y = e.clientY - rect.top;
+    }
+
+    const deltaX = x - lastPanPoint.x;
+    const deltaY = y - lastPanPoint.y;
+
+    setImageOffset(prev => ({
+      x: prev.x + deltaX,
+      y: prev.y + deltaY
+    }));
+
+    setLastPanPoint({ x, y });
+  }, [isPanning, drawingMode, isPinching, lastPanPoint]);
+
+  // Helper function definitions first
   const stopDrawing = useCallback(() => {
     setIsDrawing(false);
   }, []);
+
+  const stopPanning = useCallback(() => {
+    setIsPinching(false);
+  }, []);
+
+  const handleTouchEnd = useCallback((e) => {
+    if (e.touches.length < 2) {
+      setIsPinching(false);
+      setLastTouches([]);
+    }
+    if (e.touches.length === 0) {
+      stopDrawing();
+      stopPanning();
+    }
+  }, [stopDrawing, stopPanning]);
 
   // Pinch to zoom functions
   const getDistance = (touches) => {
@@ -183,14 +257,19 @@ export default function ImageEditor({ image, onSave, onClose }) {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
+  // Enhanced touch handling with pan support
   const handleTouchStart = useCallback((e) => {
     if (e.touches.length === 2) {
       setIsPinching(true);
       setLastTouches([...e.touches]);
-    } else if (e.touches.length === 1 && drawingMode) {
-      startDrawing(e);
+    } else if (e.touches.length === 1) {
+      if (drawingMode) {
+        startDrawing(e);
+      } else if (scale > 1) {
+        startPanning(e);
+      }
     }
-  }, [drawingMode, startDrawing]);
+  }, [drawingMode, scale, startDrawing, startPanning]);
 
   const handleTouchMove = useCallback((e) => {
     if (e.touches.length === 2 && isPinching) {
@@ -204,31 +283,38 @@ export default function ImageEditor({ image, onSave, onClose }) {
         setScale(newScale);
       }
       setLastTouches([...e.touches]);
-    } else if (e.touches.length === 1 && drawingMode && !isPinching) {
+    } else if (e.touches.length === 1) {
+      if (drawingMode && !isPinching && !isPanning) {
+        draw(e);
+      } else if (isPanning && !drawingMode && !isPinching) {
+        panImage(e);
+      }
+    }
+  }, [isPinching, lastTouches, scale, drawingMode, isPanning, draw, panImage]);
+
+  // Enhanced mouse handlers with pan support
+  const handleMouseDown = useCallback((e) => {
+    if (drawingMode) {
+      startDrawing(e);
+    } else if (scale > 1) {
+      startPanning(e);
+    }
+  }, [drawingMode, scale, startDrawing, startPanning]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (drawingMode && isDrawing) {
       draw(e);
+    } else if (isPanning && !drawingMode) {
+      panImage(e);
     }
-  }, [isPinching, lastTouches, scale, drawingMode, draw]);
+  }, [drawingMode, isDrawing, isPanning, draw, panImage]);
 
-  const handleTouchEnd = useCallback((e) => {
-    if (e.touches.length < 2) {
-      setIsPinching(false);
-      setLastTouches([]);
-    }
-    if (e.touches.length === 0) {
-      stopDrawing();
-    }
-  }, [stopDrawing]);
+  const handleMouseUp = useCallback(() => {
+    stopDrawing();
+    stopPanning();
+  }, [stopDrawing, stopPanning]);
 
-  // Mouse wheel zoom
-  const handleWheel = useCallback((e) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = Math.max(0.5, Math.min(3, scale * delta));
-      setScale(newScale);
-    }
-  }, [scale]);
-
+  // Save handler
   const handleSave = () => {
     const canvas = canvasRef.current;
     const dataURL = canvas.toDataURL('image/jpeg', 0.8);
@@ -255,9 +341,26 @@ export default function ImageEditor({ image, onSave, onClose }) {
     setScale(prev => Math.max(0.5, prev * 0.8));
   };
 
+  // Reset image position when zoom is reset
   const resetZoom = () => {
     setScale(1);
+    setImageOffset({ x: 0, y: 0 });
   };
+
+  // Reset image position
+  const resetPosition = () => {
+    setImageOffset({ x: 0, y: 0 });
+  };
+
+  // Mouse wheel zoom
+  const handleWheel = useCallback((e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newScale = Math.max(0.5, Math.min(3, scale * delta));
+      setScale(newScale);
+    }
+  }, [scale]);
 
   const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#000000', '#ffffff'];
   const mobileColors = ['#ff0000', '#0000ff', '#000000', '#ffffff'];
@@ -338,6 +441,15 @@ export default function ImageEditor({ image, onSave, onClose }) {
             >
               100%
             </button>
+            {scale > 1 && (
+              <button
+                onClick={resetPosition}
+                className="bg-blue-500 text-white border rounded-lg px-2 py-1 text-sm hover:bg-blue-600"
+                title="重設位置"
+              >
+                📍
+              </button>
+            )}
           </div>
 
           {/* Color Picker */}
@@ -383,15 +495,18 @@ export default function ImageEditor({ image, onSave, onClose }) {
           >
             <canvas
               ref={canvasRef}
-              className="border border-gray-300 rounded bg-white cursor-crosshair"
+              className="border border-gray-300 rounded bg-white"
               style={{
-                cursor: drawingMode ? 'crosshair' : isPinching ? 'grabbing' : 'grab',
+                cursor: drawingMode ? 'crosshair' :
+                       isPinching ? 'grabbing' :
+                       isPanning ? 'grabbing' :
+                       scale > 1 ? 'grab' : 'default',
                 touchAction: 'none'
               }}
-              onMouseDown={drawingMode ? startDrawing : undefined}
-              onMouseMove={drawingMode ? draw : undefined}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -421,5 +536,6 @@ export default function ImageEditor({ image, onSave, onClose }) {
         </div>
       </motion.div>
     </motion.div>
-  );
+    );
 }
+

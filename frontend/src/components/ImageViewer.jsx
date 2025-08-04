@@ -59,7 +59,7 @@ export default function ImageViewer({ open, img, imgName, onClose, onDownload })
                 下載圖片
               </button>
             </div>
-            <div className={` text-black w-fit mt-4 ml-2`}>{imgName}</div>
+            <div className={` text-black w-fit ml-2 text-xs mt-2`}>{imgName}</div>
 
           </div>
         </motion.div>

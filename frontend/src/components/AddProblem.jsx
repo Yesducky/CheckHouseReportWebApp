@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { eventAPI } from '../utils/api';
 import FullScreenCamera from './FullScreenCamera';
 import imageCompression from 'browser-image-compression';
+import ImageEditor from './ImageEditor';
 
 export default function AddProblem({ onClose, onProblemAdded }) {
   const { eventId } = useParams();
@@ -14,6 +15,8 @@ export default function AddProblem({ onClose, onProblemAdded }) {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [editingImageIndex, setEditingImageIndex] = useState(null);
   const categories = ['廚房', '客廳', '客廁',  '套廁', '房間', '露台', '其他'];
 
 
@@ -95,6 +98,21 @@ export default function AddProblem({ onClose, onProblemAdded }) {
 
   const removeImage = (index) => {
     setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const openImageEditor = (index) => {
+    setEditingImageIndex(index);
+    setShowImageEditor(true);
+  };
+
+  const handleImageEdited = (editedImageData) => {
+    if (editingImageIndex !== null) {
+      setImages(prev => prev.map((img, index) =>
+        index === editingImageIndex ? editedImageData : img
+      ));
+    }
+    setShowImageEditor(false);
+    setEditingImageIndex(null);
   };
 
   const handleSubmit = async (e) => {
@@ -249,15 +267,27 @@ export default function AddProblem({ onClose, onProblemAdded }) {
                           alt={`圖片 ${index + 1}`}
                           className="w-full h-32 object-cover rounded-lg border border-gray-300"
                         />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(index)}
-                          className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-75 group-hover:opacity-100 transition-opacity"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                        <div className="absolute top-2 right-2 flex space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => openImageEditor(index)}
+                            className="bg-blue-500 text-white rounded-full p-1 opacity-75 group-hover:opacity-100 transition-opacity"
+                            title="編輯圖片"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeImage(index)}
+                            className="bg-red-500 text-white rounded-full p-1 opacity-75 group-hover:opacity-100 transition-opacity"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -290,6 +320,20 @@ export default function AddProblem({ onClose, onProblemAdded }) {
                   onClose={() => setShowCamera(false)}
                   onImageCaptured={handleImageCaptured}
               />
+          )}
+        </AnimatePresence>
+
+        {/* Image Editor Modal */}
+        <AnimatePresence>
+          {showImageEditor && editingImageIndex !== null && (
+            <ImageEditor
+              image={images[editingImageIndex]}
+              onSave={handleImageEdited}
+              onClose={() => {
+                setShowImageEditor(false);
+                setEditingImageIndex(null);
+              }}
+            />
           )}
         </AnimatePresence>
       </motion.div>

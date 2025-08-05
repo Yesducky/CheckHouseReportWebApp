@@ -322,6 +322,7 @@ def get_chat_messages(url):
             'messages': [msg.to_dict() for msg in messages]
         })
     except Exception as e:
+        print(e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/events/url/<url>/chat/messages', methods=['POST'])

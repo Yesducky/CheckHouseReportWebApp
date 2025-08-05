@@ -131,6 +131,7 @@ export default function EventDashboard() {
 
     // Create socket connection
     socketRef.current = io(socketConfig.url, socketConfig.options);
+
     const socket = socketRef.current;
 
     socket.on('connect', () => {

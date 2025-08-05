@@ -148,7 +148,6 @@ export default function ChatRoom({ eventUrl, user, onClose, open = true }) {
                       <span className="text-xs text-gray-400 ml-auto">{
                         (() => {
                           const date = new Date(msg.timestamp);
-                          date.setHours(date.getHours() + 8);
                           return date.toLocaleString('zh-HK', { hour12: false });
                         })()
                       }</span>

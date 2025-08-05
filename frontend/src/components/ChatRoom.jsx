@@ -45,11 +45,6 @@ export default function ChatRoom({ eventUrl, user, onClose, open = true }) {
       socket.emit('join_chat', { event_url: eventUrl });
     });
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from chat server');
-      setConnected(false);
-    });
-
     socket.on('joined_chat', (data) => {
       console.log('Joined chat room:', data);
     });

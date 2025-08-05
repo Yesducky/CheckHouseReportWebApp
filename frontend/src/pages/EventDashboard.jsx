@@ -150,6 +150,9 @@ export default function EventDashboard() {
       if (!showChat && message.event_url === event.url) {
         setUnreadCount(c => c + 1);
       }
+      if(message?.system){
+        fetchEvent();
+      }
     });
 
     socket.on('error', (error) => {

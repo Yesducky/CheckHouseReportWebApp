@@ -33,20 +33,6 @@ def add_private_network_header(response):
     response.headers["Access-Control-Allow-Private-Network"] = "true"
     return response
 
-# Socket.IO Helper Functions
-def publish_event_update(event_url, event_type="update", data=None):
-    """Publish a Socket.IO event for real-time updates"""
-    try:
-        message = {
-            'type': event_type,
-            'timestamp': datetime.now().isoformat(),
-            'data': data,
-            'event_url': event_url
-        }
-        socketio.emit('event_update', message, room=f'event_{event_url}')
-        print(f"Published event update to room event_{event_url}: {event_type}")
-    except Exception as e:
-        print(f"Error publishing Socket.IO event: {e}")
 
 def publish_chat_message(event_url, message_data):
     """Publish a chat message via Socket.IO"""
@@ -67,31 +53,6 @@ def handle_connect():
 def handle_disconnect():
     print(f'Client disconnected: {request.sid}')
 
-@socketio.on('join_event')
-def handle_join_event(data):
-    """Join an event room for real-time updates"""
-    try:
-        event_url = data.get('event_url')
-        if event_url:
-            join_room(f'event_{event_url}')
-            emit('joined_event', {'event_url': event_url, 'status': 'Joined event room'})
-            print(f'Client {request.sid} joined event room: event_{event_url}')
-    except Exception as e:
-        print(f"Error joining event room: {e}")
-        emit('error', {'message': str(e)})
-
-@socketio.on('leave_event')
-def handle_leave_event(data):
-    """Leave an event room"""
-    try:
-        event_url = data.get('event_url')
-        if event_url:
-            leave_room(f'event_{event_url}')
-            emit('left_event', {'event_url': event_url, 'status': 'Left event room'})
-            print(f'Client {request.sid} left event room: event_{event_url}')
-    except Exception as e:
-        print(f"Error leaving event room: {e}")
-        emit('error', {'message': str(e)})
 
 @socketio.on('join_chat')
 def handle_join_chat(data):
@@ -164,12 +125,23 @@ def add_problem(event_id):
         )
         
         db.session.add(problem)
+
+        # Save system message to database
+        system_message = ChatMessage(
+            event_id=event.id,
+            user='system',
+            message='A new problem was added.',
+            timestamp=datetime.now()
+        )
+        db.session.add(system_message)
         db.session.commit()
 
-        # Publish Socket.IO update
-        publish_event_update(event.url, "problem_added", {
-            'problem': problem.to_dict(),
-            'event': event.to_dict()
+        # Send system message to chat room
+        publish_chat_message(event.url, {
+            'user': 'system',
+            'message': 'A new problem was added.',
+            'timestamp': system_message.timestamp.isoformat(),
+            'system': True
         })
 
         return jsonify({
@@ -249,9 +221,6 @@ def update_event_by_url(url):
             house = db.session.get(House, event.house_id)
         event_dict['house'] = house.to_dict() if house else None
 
-        # Publish Socket.IO update
-        publish_event_update(url, "event_updated", event_dict)
-
         return jsonify({'success': True, 'event': event_dict})
     except Exception as e:
         db.session.rollback()
@@ -273,14 +242,24 @@ def add_problem_by_url(url):
             important=data.get('important', False),
             category=data.get('category', '其它問題')
         )
-
         db.session.add(problem)
+
+        # Save system message to database
+        system_message = ChatMessage(
+            event_id=event.id,
+            user='System',
+            message='A new problem \"' + data.get('description', '') + "\" was added",
+            timestamp=datetime.now()
+        )
+        db.session.add(system_message)
         db.session.commit()
 
-        # Publish Socket.IO update
-        publish_event_update(url, "problem_added", {
-            'problem': problem.to_dict(),
-            'event': event.to_dict()
+        # Send system message to chat room
+        publish_chat_message(url, {
+            'user': 'System',
+            'message': 'A new problem \"' + data.get('description', '') + "\" was added",
+            'timestamp': system_message.timestamp.isoformat(),
+            'system': True
         })
 
         return jsonify({

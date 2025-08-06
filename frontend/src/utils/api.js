@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL+ '/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -40,7 +40,7 @@ export const eventAPI = {
 
 // Socket.IO configuration helper
 export const socketConfig = {
-  url: 'http://localhost:5000',
+  url: API_BASE_URL,
   options: {
     transports: ['websocket', 'polling'],
     timeout: 20000,

@@ -9,13 +9,13 @@ export default defineConfig({
   server: {
     port: 5174,
     host: true,
-    https: true,
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:5000',
-        changeOrigin: true,
-        secure: false
-      }
-    }
+    https: false,
+    // proxy: {
+    //   '/api': {
+    //     target: 'http://18.142.180.250:5000',
+    //     changeOrigin: true,
+    //     secure: false
+    //   }
+    // }
   }
 })
